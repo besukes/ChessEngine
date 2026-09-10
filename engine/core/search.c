@@ -232,3 +232,69 @@ int search(GameStruct * game, int depth, int alpha, int beta, int wb_eval , doub
     tt_store(key, depth, alpha, flag, best_move_found , ply);
     return alpha;
 }
+
+
+int checkmate_search(GameStruct * game, int depth, int alpha, int beta, int wb_eval , double ti, double lim , CorPiece turn , int ply){
+    // Similar to search() but with a focus on finding checkmate sequences
+    if(SDL_GetTicks() - ti >= lim) return FLAG_TIMEOUT;
+
+    if(depth == 0) return (wb_eval + mopup_eval(game)); // At depth 0, return the evaluation
+
+    CorPiece weak , strong;
+    calculate_stronger_side(&weak,&strong,&game->estadoJogo); // Sabemos que existe stronger side para a funcao ser chamada
+    int starts_in_check = is_in_check(&game->estadoJogo,game->estadoJogo.tabuleirojogo[turn][King],turn);
+
+    int orig_alpha = alpha;
+    Jogada * hash_move = NULL; 
+    int hash_move_eval = 0;
+    uint64_bit key = game->cur_pos_key;
+    getPositionTTMove(key,depth,&alpha,&beta,&hash_move_eval,&hash_move,ply);
+    // Transposition table mostrou que é um beta cutoff
+    if(alpha >= beta) return (hash_move_eval);
+
+
+    Jogada jogadas[MAX_NUMBER_MOVES];
+    int num_jogadas = gerar_jogadas_legais(game, jogadas,turn, NO_FLAGS);
+    moveScoring(game,jogadas, num_jogadas, hash_move , depth , turn); // Ordena as jogadas para melhorar a poda alpha-beta 
+
+    int best_score = -2*VALOR_INFINITO;
+    Jogada best_move_found = jogadas[0];
+    int legal_moves = 0;
+    hash_key_stack[hash_stack_indx++] = key;
+
+    for(int i=0 ; i < num_jogadas ; i++){
+        pick_best_move(jogadas, num_jogadas, i);
+        CorPiece op_turn = (turn == brancas) ? pretas : brancas;
+        int delta = applyAlgorithmDeltaMove(game,&jogadas[i],turn,weak,strong);
+        Boolean in_check = is_in_check(&game->estadoJogo,game->estadoJogo.tabuleirojogo[turn][King],turn);
+        if(!in_check){
+            legal_moves = 1;
+            int eval = -checkmate_search(game, depth - 1 , -beta , -alpha , wb_eval + delta , ti , lim , op_turn , ply + 1);
+            undoMove(game,&jogadas[i],turn);
+            if((-eval) == FLAG_TIMEOUT) {
+                hash_stack_indx--;
+                return FLAG_TIMEOUT;
+            }
+            if(eval > best_score){best_score = eval;best_move_found = jogadas[i];}
+            if (eval >= beta){
+                tt_store(key, depth, beta, TT_LOWERBOUND, jogadas[i] , ply);
+                hash_stack_indx--;
+                return beta;
+            }
+            alpha = (eval > alpha) ? eval : alpha;
+        }
+        else undoMove(game,&jogadas[i],turn);
+    }
+    hash_stack_indx--;
+    //Se não tiverem sido executado moves nenhuns , então é porque os movimentos eram inválidos
+    if(!legal_moves){
+        if(starts_in_check){
+            return (-VALOR_INFINITO + ply); // Xeque-mate ,prioriza mates mais rápidos
+        }
+        return 0; // Empate por afogamento
+    }
+    //Se best_score > orig_alpha , entao encontramos uma jogada melhor , caso contrario esta jogada piora a posicao (fail)
+    TTFlag flag = (best_score > orig_alpha && best_score != 0) ? TT_EXACT : TT_UPPERBOUND;
+    tt_store(key, depth, alpha, flag, best_move_found , ply);
+    return alpha;
+}

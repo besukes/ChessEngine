@@ -57,7 +57,7 @@ jogadabot timeout_reached_move(GameStruct * game , Jogada jogadas[MAX_NUMBER_MOV
     return move;
 }
 
-jogadabot engine_search(GameStruct * game , CorPiece turn , int depth , double initial_time , double budget , SDL_Event * e){
+jogadabot engine_search(GameStruct * game , CorPiece turn , int depth , double initial_time , double budget , SDL_Event * e , int is_checkmate_mode){
     Jogada jogadas[MAX_NUMBER_MOVES];
     int num_jogadas = gerar_jogadas_legais(game, jogadas,turn, NO_FLAGS);
     // Consulta a transposition table para obter uma "hash move" que ajuda a ordenar
@@ -82,23 +82,39 @@ jogadabot engine_search(GameStruct * game , CorPiece turn , int depth , double i
         int delta = applyDeltaMove(game,&jogadas[i],turn,op_turn);
         Boolean in_check = is_in_check(&game->estadoJogo,game->estadoJogo.tabuleirojogo[turn][King],turn);
         if(!in_check){
-            int pvs_beta = (i==0) ? beta : (alpha + 1);
-            // Chamada recursiva do NEGAMAX:
-            int eval = -search(game, depth - 1 , -pvs_beta, -alpha, eval_wb_inicial + delta, initial_time, budget , op_turn,1 , 1);
-            if(eval > alpha && eval < beta && i > 0)
-                eval = -search(game, depth - 1, -beta, -alpha, eval_wb_inicial + delta, initial_time, budget, op_turn, 1 , 1);
-            undoMove(game,&jogadas[i],turn);
-            // Se o tempo acabou em algum nó filho, propaga o timeout para cima sem salvar nada
-            if((-eval) == FLAG_TIMEOUT) {
-                printf("[engine] engine_search: timeout reached during search\n");
-                return (timeout_reached_move(game,jogadas,turn,num_jogadas,eval_wb_inicial));
+            if(is_checkmate_mode){
+                int eval = -checkmate_search(game, depth - 1 , -beta , -alpha , eval_wb_inicial + delta , initial_time , budget , op_turn , 1);
+                undoMove(game,&jogadas[i],turn);
+                if((-eval) == FLAG_TIMEOUT) {
+                    printf("[engine] engine_search: timeout reached during search\n");
+                    return (timeout_reached_move(game,jogadas,turn,num_jogadas,eval_wb_inicial));
+                }
+                // Guarda a melhor pontuação encontrada para o jogador atual
+                if(eval > melhor_eval) {
+                    melhor_eval = eval;
+                    best_move = jogadas[i];
+                }
+                alpha = (melhor_eval > alpha) ? melhor_eval : alpha;
             }
-            // Guarda a melhor pontuação encontrada para o jogador atual
-            if(eval > melhor_eval) {
-                melhor_eval = eval;
-                best_move = jogadas[i];
+            else{
+                int pvs_beta = (i==0) ? beta : (alpha + 1);
+                // Chamada recursiva do NEGAMAX:
+                int eval = -search(game, depth - 1 , -pvs_beta, -alpha, eval_wb_inicial + delta, initial_time, budget , op_turn,1 , 1);
+                if(eval > alpha && eval < beta && i > 0)
+                    eval = -search(game, depth - 1, -beta, -alpha, eval_wb_inicial + delta, initial_time, budget, op_turn, 1 , 1);
+                undoMove(game,&jogadas[i],turn);
+                // Se o tempo acabou em algum nó filho, propaga o timeout para cima sem salvar nada
+                if((-eval) == FLAG_TIMEOUT) {
+                    printf("[engine] engine_search: timeout reached during search\n");
+                    return (timeout_reached_move(game,jogadas,turn,num_jogadas,eval_wb_inicial));
+                }
+                // Guarda a melhor pontuação encontrada para o jogador atual
+                if(eval > melhor_eval) {
+                    melhor_eval = eval;
+                    best_move = jogadas[i];
+                }
+                alpha = (melhor_eval > alpha) ? melhor_eval : alpha;
             }
-            alpha = (melhor_eval > alpha) ? melhor_eval : alpha;
         }
         else undoMove(game,&jogadas[i],turn);
     }
@@ -112,7 +128,8 @@ jogadabot engine_search(GameStruct * game , CorPiece turn , int depth , double i
 }
 
 
-jogadabot iterative_deepening(GameStruct * game , CorPiece turn , int * reached_depth , SDL_Event * e){
+
+jogadabot iterative_deepening(GameStruct * game , CorPiece turn , int * reached_depth , SDL_Event * e , int is_checkmate_mode){
     double initial_time = SDL_GetTicks();
     const double time_budget = 2000; // orçamento total para a jogada, partilhado por todas as profundidades
     jogadabot best_so_far = {0};
@@ -122,7 +139,7 @@ jogadabot iterative_deepening(GameStruct * game , CorPiece turn , int * reached_
         hash_stack_indx = start_hash_indx;
         double elapsed = SDL_GetTicks() - initial_time;
         if(elapsed >= time_budget) break;
-        jogadabot result = engine_search(game, turn, depth , initial_time, time_budget,e);
+        jogadabot result = engine_search(game, turn, depth , initial_time, time_budget,e , is_checkmate_mode);
         if(result.completed){
             best_so_far = result;
             *reached_depth = depth;
@@ -139,6 +156,8 @@ jogadabot iterative_deepening(GameStruct * game , CorPiece turn , int * reached_
 }
 
 
+
+
 void printEngineMoveInfo(jogadabot best_jogada , int reached_depth , double time_taken , float eval){
      printf("[ENGINE] get_best_move: Moved %s from %s to %s , depth alcancada %d/%d , took %d ms with an eval of %f\n", 
                 STR_pieces_names[best_jogada.best_move.peca_movida], STR_pieces_squares[best_jogada.best_move.origem], 
@@ -150,18 +169,20 @@ void printEngineMoveInfo(jogadabot best_jogada , int reached_depth , double time
 Jogada get_best_move(GameStruct * game , CorPiece turn , int is_interative_deepening , SDL_Event * e){
     memset(history_table, 0, sizeof(int) * (NUMBER_PIECES*2) * NUM_SQUARES);
     memset(killer_moves , 0 , sizeof(Jogada) * MAX_DEPTH_SEARCH * 2);
-    CorPiece strong,weak; //Doesnt really matter
-    if(calculate_stronger_side(&weak,&strong,&game->estadoJogo)) tt_init(); //Ajuda a terminar o mate em finais KQ vs K ou KQ vs KR
+    CorPiece strong,weak; 
+    // Se existir um lado com checkmate simples disponivel , entra num algoritmo proprio
+    int algorithm_mode = calculate_stronger_side(&weak,&strong,&game->estadoJogo);
     double initial_time = SDL_GetTicks();
     int reached_depth = 0;
     jogadabot best_jogada = {0};
     total_nodes_searched = 0;
     if(is_interative_deepening){
-        best_jogada = iterative_deepening(game,turn,&reached_depth,e);
+        if(algorithm_mode) tt_init();
+        best_jogada = iterative_deepening(game,turn,&reached_depth,e,algorithm_mode);
     }
     else{
         reached_depth = 5;
-        best_jogada = engine_search(game,turn,10,initial_time,3000,e);
+        best_jogada = engine_search(game,turn,10,initial_time,3000,e,0);
     }
     int who2Move = (turn==brancas) ? 1 : (-1);
     float evaluation = (float)(best_jogada.move_eval*who2Move) / (float)(100);

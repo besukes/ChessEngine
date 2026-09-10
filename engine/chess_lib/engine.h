@@ -10,14 +10,14 @@
 #define FLAG_TIMEOUT -999999
 #define VALOR_INFINITO 99999
 
-#define CHECKMATE_BENCHMARK 1
+#define CHECKMATE_BENCHMARK 0
 //Need to define one to 5 and the other to 4 and 5 = Queen , 4 = Rook
 #define BENCHMARK_TESTED 5
 #define BENCHMARK_NOT_TESTED 4
 
 #define ITERATIVE_DEEPENING 1
 #define BOT_PLAYS_BLACK 1
-#define BOT_PLAYS_WHITE 1
+#define BOT_PLAYS_WHITE 0
 
 
 #define COLUNA_A 0x0101010101010101ULL
@@ -402,6 +402,7 @@ void checkmate_sfx (Mix_Chunk * sfxarray[]);
 /// search /////////////////////////////
 
 int search(GameStruct * game, int depth, int alpha, int beta, int wb_eval , double initial_time, double time_limit , CorPiece turn , int ply , int allows_nmp);
+int checkmate_search(GameStruct * game, int depth, int alpha, int beta, int wb_eval , double ti, double lim , CorPiece turn , int ply);
 
 
 
@@ -426,12 +427,14 @@ Jogada get_best_move(GameStruct * game , CorPiece turn , int is_interative_deepe
 /// moves /////////////////////////////////
 
 int applyDeltaMove(GameStruct * game , Jogada * jogada , CorPiece turn , CorPiece op_turn);
+int applyAlgorithmDeltaMove(GameStruct * game , Jogada * jogada , CorPiece turn , CorPiece weak , CorPiece strong);
 void pick_best_move(Jogada * jogadas, int num_jogadas, int start_index);
 void moveScoring(GameStruct * game ,Jogada * jogadas , int num_jogadas , Jogada * hash_move , int depth , CorPiece turn);
 void moveScoringCaptures(GameStruct * game ,Jogada * jogadas , int num_jogadas , Jogada * hash_move , CorPiece turn);
 int matches_killer_move(int depth, Jogada * jogada, int index);
 int calculate_extension_depth(int op_king_in_check, int depth , CorPiece op_turn);
 int is_repeated_position(uint64_bit key);
+int has_occured_position(uint64_bit key);
 
 
 

@@ -47,15 +47,12 @@ int calculate_stronger_side(CorPiece * weak , CorPiece * strong , EstadoJogo * e
     int white_rooks = __builtin_popcountll(estado->tabuleirojogo[brancas][Rook]);
     int black_rooks = __builtin_popcountll(estado->tabuleirojogo[pretas][Rook]);
 
-    int white_material = white_queens*800 + white_minors*300 + white_rooks*500;
-    int black_material = black_queens*800 + black_minors*300 + black_rooks*500;
-
-    if((white_material > black_material + 1000) || (white_material >= 500 && black_material <= 300)) {
+    if((white_queens || white_rooks) && !(black_queens || black_rooks || black_minors)){
         *weak = pretas;
         *strong = brancas;
         return 1;
     }
-    else if((black_material > white_material + 1000) || (black_material >= 500 && white_material <= 300)){
+    else if((black_queens || black_rooks) && !(white_queens || white_rooks || white_minors)){
         *weak = brancas;
         *strong = pretas;
         return 1;
