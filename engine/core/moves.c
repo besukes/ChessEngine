@@ -95,7 +95,11 @@ int has_occured_position(uint64_bit key){
 
 //This function is not currently working as intended
 int is_repeated_position(uint64_bit key){
-    if(hash_stack_indx >= 2) return (hash_key_stack[hash_stack_indx - 2] == key);
+    /*if(hash_stack_indx >= 2) return (hash_key_stack[hash_stack_indx - 2] == key);
+    return 0;*/
+    for(int i = hash_stack_indx - 2; i >= 0; i -= 2){ // só offsets pares fazem sentido (mesmo lado a jogar)
+        if(hash_key_stack[i] == key) return 1;
+    }
     return 0;
 }
 
@@ -133,21 +137,24 @@ int applyAlgorithmDeltaMove(GameStruct * game , Jogada * jogada , CorPiece turn 
     uint64_bit weak_king_moves = get_king_moves(game->estadoJogo.tabuleirojogo[weak][King]);
 
     int old_weak_king_eval = __builtin_popcountll(weak_king_moves);
+    int old_mopup = mopup_eval(game);
 
     atualizaJogada(game, jogada, turn);
 
     uint64_bit new_weak_king_moves = get_king_moves(game->estadoJogo.tabuleirojogo[weak][King]);
 
     int new_weak_king_eval = __builtin_popcountll(new_weak_king_moves);
+    int new_mopup = mopup_eval(game);
 
     int whoIsWeak = (weak == brancas) ? 1 : -1;
     int who2Move = (turn == brancas) ? 1 : -1;
 
     int delta_weak_king_eval = (new_weak_king_eval - old_weak_king_eval) * 5;
+    int delta_mopup = new_mopup - old_mopup;
 
     int captured_piece_eval = (jogada->peca_capturada != Empty) ? pieces_value[jogada->peca_capturada] : 0;
 
-    return(whoIsWeak*delta_weak_king_eval + mopup_eval(game) + who2Move*captured_piece_eval);
+    return(whoIsWeak*delta_weak_king_eval + delta_mopup + who2Move*captured_piece_eval);
 }
 
 
